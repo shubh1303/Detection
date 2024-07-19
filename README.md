@@ -1,60 +1,76 @@
-# Detection
-Image detection, or image recognition, refers to the process of identifying and classifying objects, patterns, or features within an image. It is a subset of computer vision and involves using algorithms and models to interpret and analyze visual data. Here’s a detailed description of how image detection works:
+# import packages
+from imutils.video import VideoStream
+from imutils.video import FPS
+import numpy as np
+import argparse
+import imutils
+import time
+import cv2
 
-### 1. *Image Acquisition*
+# construct the argument parse and parse the arguments
+ap = argparse.ArgumentParser()
+ap.add_argument("-p", "--prototxt", required=True,
+    help="path to Caffe 'deploy' prototxt file")
+ap.add_argument("-m", "--model", required=True,
+    help="path to Caffe pre-trained model")
+ap.add_argument("-c", "--confidence", type=float, default=0.2,
+    help="minimum probability to filter weak predictions")
+args = vars(ap.parse_args())
 
-   - *Source*: The process begins with acquiring an image through a camera, scanner, or other imaging devices. The image is typically in digital format.
+# Initialize the list of class labels MobileNet SSD was trained to detect
+CLASSES = ["aeroplane", "background", "bicycle", "bird", "boat",
+           "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
+           "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
+           "sofa", "train", "tvmonitor"]
 
-### 2. *Preprocessing*
+# Assigning random colors to each of the classes
+COLORS = np.random.uniform(0, 255, size=(len(CLASSES), 3))
 
-   - *Normalization*: Adjusting the image to a standard size or scale.
-   - *Noise Reduction*: Applying filters to remove unwanted artifacts or distortions.
-   - *Enhancement*: Improving the image quality for better detection (e.g., contrast adjustment).
+# load our serialized model
+print("[INFO] loading model...")
+net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
 
-### 3. *Feature Extraction*
+# initialize the video stream
+print("[INFO] starting video stream...")
+vs = VideoStream(src=0).start()
+time.sleep(2.0)
 
-   - *Edges and Corners*: Detecting boundaries and key points in the image using techniques like Canny edge detection or Harris corner detection.
-   - *Descriptors*: Extracting features that represent the image’s key characteristics, such as SIFT (Scale-Invariant Feature Transform) or SURF (Speeded-Up Robust Features).
+fps = FPS().start()
 
-### 4. *Object Detection*
+while True:
+    frame = vs.read()
+    frame = imutils.resize(frame, width=600)
+    (h, w) = frame.shape[:2]
+    resized_image = cv2.resize(frame, (300, 300))
+    blob = cv2.dnn.blobFromImage(resized_image, 1 / 127.5, (300, 300), 127.5, swapRB=True)
+    net.setInput(blob)
+    predictions = net.forward()
 
-   - *Classifying Objects*: Using algorithms to recognize and categorize objects in the image. Techniques include:
-     - *Template Matching*: Comparing segments of the image to predefined templates.
-     - *Region-based Methods*: Dividing the image into regions and analyzing each region.
-     - *Deep Learning Models*: Employing neural networks like Convolutional Neural Networks (CNNs) for advanced detection. Examples include YOLO (You Only Look Once) and Faster R-CNN.
+    for i in np.arange(0, predictions.shape[2]):
+        confidence = predictions[0, 0, i, 2]
+        if confidence > args["confidence"]:
+            idx = int(predictions[0, 0, i, 1])
+            box = predictions[0, 0, i, 3:7] * np.array([w, h, w, h])
+            (startX, startY, endX, endY) = box.astype("int")
+            label = "{}: {:.2f}%".format(CLASSES[idx], confidence * 100)
+            print("Object detected: ", label)
+            cv2.rectangle(frame, (startX, startY), (endX, endY), COLORS[idx], 2)
+            y = startY - 15 if startY - 15 > 15 else startY + 15
+            cv2.putText(frame, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
 
-### 5. *Bounding Box and Localization*
+    # Display the output frame using OpenCV
+    cv2.imshow("Frame", frame)
 
-   - *Bounding Boxes*: Drawing rectangles around detected objects to indicate their location.
-   - *Localization*: Identifying the precise position of objects within the bounding boxes.
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord("q"):
+        break
 
-### 6. *Post-processing*
+    fps.update()
 
-   - *Filtering*: Removing false positives or irrelevant detections.
-   - *Refinement*: Adjusting the detection results for accuracy.
+fps.stop()
 
-### 7. *Classification and Labeling*
+print("[INFO] Elapsed Time: {:.2f}".format(fps.elapsed()))
+print("[INFO] Approximate FPS: {:.2f}".format(fps.fps()))
 
-   - *Assigning Labels*: Categorizing detected objects based on pre-trained models or databases.
-   - *Inference*: Interpreting the classified data to make decisions or trigger actions.
-
-### Applications
-
-- *Medical Imaging*: Detecting anomalies in X-rays, MRIs, or CT scans.
-- *Autonomous Vehicles*: Recognizing road signs, pedestrians, and other vehicles.
-- *Security Systems*: Identifying faces or monitoring for suspicious activities.
-- *Retail*: Automating checkout processes or managing inventory.
-
-### Technologies
-
-- *Traditional Algorithms*: Methods like edge detection, histograms, and template matching.
-- *Machine Learning*: Utilizing models trained on large datasets to improve detection accuracy.
-- *Deep Learning*: Implementing complex neural networks for high-performance recognition and classification.
-
-### Challenges
-
-- *Variability*: Handling different lighting conditions, angles, and image quality.
-- *Complexity*: Recognizing and distinguishing between similar objects or patterns.
-- *Scalability*: Adapting to large-scale and real-time image processing requirements.
-
-In summary, image detection involves a combination of preprocessing, feature extraction, object detection, and classification to interpret and understand visual information from images. Advances in machine learning and deep learning have significantly enhanced the accuracy and efficiency of image detection systems.
+cv2.destroyAllWindows()
+vs.stop()
